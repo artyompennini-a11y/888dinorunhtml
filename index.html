@@ -44,7 +44,7 @@
   #mute.muted .x{ display:block; }
 
   .overlay{
-    position:fixed; left:0; right:0; top:15%; text-align:center;
+    position:fixed; left:0; right:0; top:12%; text-align:center;
     color:#34291A; pointer-events:none;
     transition:opacity .45s ease;
   }
@@ -54,11 +54,15 @@
     font-size:clamp(34px, 7vw, 62px); letter-spacing:5px;
   }
   .sub{ font-size:clamp(18px, 2.6vw, 24px); opacity:.72; margin-top:4px; }
-  .rules{ display:inline-block; text-align:left; margin-top:30px; font-size:clamp(18px, 2.4vw, 23px); line-height:2.05; }
+  .rules{ display:inline-block; text-align:left; margin-top:26px; font-size:clamp(18px, 2.4vw, 23px); line-height:2.05; }
   .rules .r{ display:flex; align-items:baseline; gap:10px; }
   .rules .k{ font-family:'Silkscreen', monospace; font-size:.68em; letter-spacing:.5px; }
   .rules .d{ flex:1; min-width:26px; border-bottom:2px dotted currentColor; opacity:.45; transform:translateY(-6px); }
-  .cta{ margin-top:34px; font-size:clamp(19px, 2.6vw, 25px); animation:blink 1.15s steps(2, jump-none) infinite; }
+  .nota{
+    margin-top:20px; font-size:clamp(16px, 2.2vw, 20px); opacity:.62;
+    max-width:540px; margin-left:auto; margin-right:auto; line-height:1.45; padding:0 16px;
+  }
+  .cta{ margin-top:26px; font-size:clamp(19px, 2.6vw, 25px); animation:blink 1.15s steps(2, jump-none) infinite; }
   @keyframes blink{ 50%{ opacity:0; } }
   .scoreline{ font-size:clamp(21px, 3vw, 29px); margin-top:16px; }
   .scoreline b{ font-family:'Silkscreen', monospace; font-size:.82em; }
@@ -85,12 +89,13 @@
 
 <div class="overlay" id="ovStart">
   <h1>DINO RUN</h1>
-  <p class="sub">corri nel deserto, schiva i cactus</p>
+  <p class="sub">corri nel deserto, schiva cactus e pterodattili</p>
   <div class="rules">
     <div class="r"><span class="k">CLICCA / SPAZIO</span><span class="d"></span><span>salta</span></div>
     <div class="r"><span class="k">TIENI PREMUTO</span><span class="d"></span><span>salto più alto</span></div>
     <div class="r"><span class="k">CLICCA IN ARIA</span><span class="d"></span><span>picchiata</span></div>
   </div>
+  <p class="nota">Dopo 150 punti arrivano gli pterodattili: quelli <b>bassi</b> si saltano, quelli <b>alti</b> si lasciano passare restando a terra. Se salti contro di loro... splash.</p>
   <p class="cta">— clicca per correre —</p>
 </div>
 
@@ -107,7 +112,8 @@
    Sempre giorno. Velocità legata ai PUNTI:
    - lenta alla partenza, salita dolce fino a 600 punti
    - oltre i 600 punti l'accelerazione diventa marcata
-   Ostacoli: SOLO cactus, 3 forme, gruppi fino a 4.
+   Ostacoli: cactus (3 forme, gruppi fino a 4) + pterodattili
+   su 3 altezze dopo i 150 punti.
    ============================================================ */
 const cvs = document.getElementById('game');
 const ctx = cvs.getContext('2d');
@@ -200,6 +206,30 @@ const SHAPES = [
 ];
 const TINTS = ['#5E7355', '#4C6B4E'];
 
+/* --- pterodattilo, due fotogrammi di battito --- */
+const PT0 = [ // ali su
+".........XX.........",
+".........XXX........",
+".........XXXX.......",
+"..........XXX.......",
+"..........XX........",
+"..X....XXXXXXXXX....",
+"XXXXXXXXXXXXXXXXXX..",
+"....XXXXXXXXXXXXXX..",
+".......XXXXXXXXX...."
+];
+const PT1 = [ // ali giù
+".......XXXXXXXXX....",
+"....XXXXXXXXXXXXXX..",
+"XXXXXXXXXXXXXXXXXX..",
+"..X....XXXXXXXXX....",
+"..........XX........",
+"..........XXX.......",
+".........XXXX.......",
+".........XXX........",
+".........XX........."
+];
+
 const CLOUD = ["..XXXX....",".XXXXXXX..","XXXXXXXXXX"];
 
 const SPR = {};
@@ -216,6 +246,8 @@ bake('dinoB',  BODY.concat(L_RUNB),  '#C4553B');
 bake('dinoI',  BODY.concat(L_STAND), '#C4553B');
 bake('dinoBl', BODY_BLINK.concat(L_STAND), '#C4553B');
 bake('dinoD',  BODY_DEAD.concat(L_STAND),  '#A84630');
+bake('pt0',    PT0, '#6B503B');
+bake('pt1',    PT1, '#6B503B');
 bake('cloud',  CLOUD, C.cloud);
 /* cactus: SPR.cac[forma][tinta] */
 SPR.cac = SHAPES.map(sh => TINTS.map(t => {
@@ -231,9 +263,9 @@ const spr = (img,x,y,cell) => ctx.drawImage(img, Math.round(x), Math.round(y), i
 
 /* ---------------- stato di gioco ---------------- */
 /* VELOCITÀ IN BASE AI PUNTI:
-   - START_V = 320 (più lenta di prima)
+   - START_V = 320
    - fino a 600 punti: +0.15 px/s per punto  (a 600 → 410)
-   - oltre 600 punti:  +0.45 px/s per punto (a 1500 → 815, cap a 1000) */
+   - oltre 600 punti:  +0.45 px/s per punto (cap a 1000) */
 const START_V = 320, MAX_V = 1000;
 const RAMP1 = 0.15, RAMP2 = 0.45, BOOST_AT = 600;
 function targetSpeed(){
@@ -241,6 +273,7 @@ function targetSpeed(){
   return Math.min(MAX_V, START_V + BOOST_AT*RAMP1 + (score - BOOST_AT) * RAMP2);
 }
 
+const PTERO_FROM = 150;          // punti da cui compaiono gli pterodattili
 let mode = 'start';
 let time = 0, worldX = 0, vN = 0, speed = 0;
 let score = 0, hi = +(store.getItem('dinoHi') || 0);
@@ -380,15 +413,30 @@ function burst(x, y, n, spread, kind){
   }
 }
 
-/* ---------------- ostacoli: SOLO CACTUS ---------------- */
+/* ---------------- ostacoli: cactus + pterodattili ---------------- */
 function spawn(){
   const r = Math.random();
+  /* pterodattili: dopo 150 punti al 22%, dopo 600 punti al 35% */
+  const ptero = (score > PTERO_FROM && r < 0.22) || (score > BOOST_AT && r < 0.35);
+  if(ptero){
+    const cell = 2.6*S, hgt = 9*cell;
+    const lvl = [30, 58, 108][Math.floor(Math.random()*3)]; // bassa / media / alta
+    obstacles.push({
+      kind:'ptero', x:W+60, cell, w:20*cell, h:hgt,
+      y0:groundY - hgt - lvl*S,
+      ph:Math.random()*6.28,
+      vx:(30 + Math.random()*50)*S   // a volte vola più veloce di te
+    });
+    return true;
+  }
   let n;
-  if(r < 0.40)      n = 1;
-  else if(r < 0.70) n = 2;
-  else if(r < 0.93) n = 3;
+  const v = Math.random();
+  if(v < 0.40)      n = 1;
+  else if(v < 0.70) n = 2;
+  else if(v < 0.93) n = 3;
   else              n = (vN > 700) ? 4 : 2;
   addCactus(Math.floor(Math.random()*3), n);
+  return false;
 }
 function addCactus(shapeIdx, n){
   const sh = SHAPES[shapeIdx];
@@ -423,7 +471,7 @@ function update(dt){
   if(flashT > 0) flashT -= dt;
 
   if(mode === 'run'){
-    /* velocità inseguo il target calcolato sui PUNTI (transizione morbida) */
+    /* velocità: insegue il target calcolato sui PUNTI */
     const tv = targetSpeed();
     vN += (tv - vN) * Math.min(1, dt * 2.5);
     speed = vN * S;
@@ -455,18 +503,21 @@ function update(dt){
 
     distNext -= speed*dt;
     if(distNext <= 0){
-      spawn();
+      const eraPtero = spawn();
       distNext = (vN*(0.75 + Math.random()*0.5) + 260)*S;
+      if(eraPtero) distNext += 140*S;   // un po' di respiro extra dopo un ptero
     }
     for(let i=obstacles.length-1;i>=0;i--){
       const o = obstacles[i];
-      o.x -= speed*dt;
+      o.x -= (speed + (o.vx || 0))*dt;   // gli pterodattili hanno velocità propria
       if(o.x + o.w < -60) obstacles.splice(i,1);
     }
 
     const db = { x:dinoX + 7*S, y:groundY - D_H*S - dino.airY + 6*S, w:D_W*S - 16*S, h:D_H*S - 10*S };
     for(const o of obstacles){
-      const ob = { x:o.x+2*S, y:o.y+2*S, w:o.w-4*S, h:o.h-3*S };
+      const ob = o.kind === 'ptero'
+        ? { x:o.x+5*S, y:o.y0 + Math.sin(time*4.6+o.ph)*6*S + 4*S, w:o.w-10*S, h:o.h-8*S }
+        : { x:o.x+2*S, y:o.y+2*S, w:o.w-4*S, h:o.h-3*S };
       if(overlap(db, ob)){ die(); break; }
     }
 
@@ -540,8 +591,14 @@ function render(){
 
   // ostacoli
   for(const o of obstacles){
-    const img = SPR.cac[o.shape][o.tint];
-    for(let i=0;i<o.n;i++) spr(img, o.x + i*(o.cw + o.gap), o.y, o.cell);
+    if(o.kind === 'ptero'){
+      // battito d'ali + ondeggiamento verticale
+      const img = Math.floor(time*5.5)%2 ? SPR.pt1 : SPR.pt0;
+      spr(img, o.x, o.y0 + Math.sin(time*4.6 + o.ph)*6*S, o.cell);
+    } else {
+      const img = SPR.cac[o.shape][o.tint];
+      for(let i=0;i<o.n;i++) spr(img, o.x + i*(o.cw + o.gap), o.y, o.cell);
+    }
   }
 
   // particelle
